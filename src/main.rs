@@ -6,6 +6,8 @@ use std::io::{self, Error, ErrorKind, Read, Result};
 
 const _MAX_SIZE: u64 = 0x02000000;
 
+//todo: use leveldb to get the file pos of the block undo data
+
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
