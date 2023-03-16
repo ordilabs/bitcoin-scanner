@@ -1,9 +1,10 @@
+use bitcoin::Script;
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::env;
 use std::fs::File;
 use std::io::{self, Error, ErrorKind, Read, Result};
-//use undo::{UndoBlock, UndoCoin};
-const MAX_SIZE: u64 = 0x02000000;
+
+const _MAX_SIZE: u64 = 0x02000000;
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -11,6 +12,8 @@ fn main() -> io::Result<()> {
         eprintln!("Usage: {} /path/to/rev*.dat", args[0]);
         std::process::exit(1);
     }
+
+    dbg!("Starting up...");
 
     let filepath = &args[1];
     let mut file = File::open(filepath)?;
@@ -22,7 +25,7 @@ fn main() -> io::Result<()> {
 
 fn parse_rev_file(file: &mut File) -> io::Result<()> {
     const MAGIC_BYTES: [u8; 4] = [0xf9, 0xbe, 0xb4, 0xd9]; // Mainnet magic bytes
-    const HEADER_SIZE: u64 = 8; // 4 bytes for magic number + 4 bytes for data size
+    const _HEADER_SIZE: u64 = 8; // 4 bytes for magic number + 4 bytes for data size
 
     loop {
         let mut magic = [0; 4];
@@ -41,9 +44,9 @@ fn parse_rev_file(file: &mut File) -> io::Result<()> {
         let mut data_size_bytes = [0; 4];
 
         file.read_exact(&mut data_size_bytes)?;
-        let data_size = u32::from_le_bytes(data_size_bytes) as u64;
+        let _data_size = u32::from_le_bytes(data_size_bytes) as u64;
 
-        //let undo = UndoBlock::parse(file)?;
+        dbg!("block", _data_size);
 
         let block_undo = BlockUndo::parse(file)?;
         dbg!(block_undo.inner.len());
@@ -54,14 +57,6 @@ fn parse_rev_file(file: &mut File) -> io::Result<()> {
 
     Ok(())
 }
-
-//use byteorder::{LittleEndian, ReadBytesExt};
-
-use bitcoin::Script;
-use bitcoin::{
-    blockdata,
-    consensus::{self},
-};
 
 #[derive(Debug, Clone)]
 pub struct TxInUndo {
@@ -76,43 +71,45 @@ pub struct TxUndo(Vec<TxInUndo>);
 
 pub struct BlockUndo {
     pub inner: Vec<TxUndo>,
-    pub dsha: Vec<u8>,
 }
 
 impl BlockUndo {
     pub fn parse<R: Read>(reader: &mut R) -> io::Result<Self> {
-        let ntxs = read_compact_size(&mut reader)?;
+        let ntxs = read_compact_size(reader)?;
+        dbg!(ntxs);
+
         let mut inner = vec![TxUndo::default(); (ntxs + 1) as usize];
 
         for tx_undo in inner.iter_mut().skip(1) {
-            let ntxi = read_compact_size(&mut reader)?;
+            let ntxi = read_compact_size(reader)?;
+            //dbg!(reader.)
             for _ in 0..ntxi {
-                tx_undo.0.push(TxInUndo::parse(&mut reader)?);
+                tx_undo.0.push(TxInUndo::parse(reader)?);
             }
         }
 
-        let mut dsha = vec![0; 32];
-        reader.read_exact(&mut dsha)?;
-
-        Ok(Self { inner, dsha })
+        Ok(Self { inner })
     }
 }
 
 impl TxInUndo {
     fn parse<R: Read>(reader: &mut R) -> Result<Self> {
-        let code = read_varint(&mut reader)?;
+        let code = read_varint_core(reader)?;
         let coinbase = code & 1;
         let height = code >> 1;
 
-        let version = read_varint(&mut reader)?;
+        let version = read_varint_core(reader)?;
         assert_eq!(version, 0);
-        let amount = decompress_amount(read_varint(&mut reader)?);
-        let kind = read_varint(&mut reader)?;
+        let amount = decompress_amount(read_varint_core(reader)?);
+        let kind = read_varint_core(reader)?;
 
         let script = match kind {
             0 => {
                 // p2pkh
                 let mut script = vec![0x76, 0xa9, 20];
+                let mut buf = vec![0; 20];
+                reader.read_exact(&mut buf)?;
+                script.extend_from_slice(&buf);
                 script.extend_from_slice(&[0x88, 0xac]);
                 script
             }
@@ -126,6 +123,7 @@ impl TxInUndo {
                 script
             }
             2..=5 => {
+                // TODO: decompress pubkey
                 // p2pk, fake implementaion! decompressing pubkey not implemented
                 let sz = 32;
                 let mut script = vec![0; sz];
@@ -140,7 +138,9 @@ impl TxInUndo {
             }
         };
 
-        let script: blockdata::script::Script = consensus::deserialize(&script).unwrap();
+        let script: Script = Script::from(script);
+        let asm = script.clone().asm();
+        dbg!(asm);
 
         Ok(Self {
             coinbase,
@@ -151,75 +151,99 @@ impl TxInUndo {
     }
 }
 
-fn read_compact_size<R: Read>(reader: &mut R) -> Result<u64> {
-    let ch_size = reader.read_u8()?;
-
-    let n_size_ret = match ch_size {
-        0..=252 => ch_size as u64,
-        253 => {
-            let size = reader.read_u16::<LittleEndian>()? as u64;
-            if size < 253 {
-                return Err(Error::new(
-                    ErrorKind::InvalidData,
-                    "non-canonical ReadCompactSize()",
-                ));
+fn read_compact_size<R: Read>(r: &mut R) -> Result<u64> {
+    let n = r.read_u8()?;
+    match n {
+        0xFF => {
+            let x = r.read_u64::<LittleEndian>()?;
+            if x < 0x100000000 {
+                Err(Error::new(ErrorKind::Other, "oh no!"))
+            } else {
+                Ok(x)
             }
-            size
         }
-        254 => {
-            let size = reader.read_u32::<LittleEndian>()? as u64;
-            if size < 0x10000 {
-                return Err(Error::new(
-                    ErrorKind::InvalidData,
-                    "non-canonical ReadCompactSize()",
-                ));
+        0xFE => {
+            let x = r.read_u32::<LittleEndian>()?;
+            if x < 0x10000 {
+                Err(Error::new(ErrorKind::Other, "oh no!"))
+            } else {
+                Ok(x as u64)
             }
-            size
         }
-        255 => {
-            let size = reader.read_u64::<LittleEndian>()?;
-            if size < 0x100000000 {
-                return Err(Error::new(
-                    ErrorKind::InvalidData,
-                    "non-canonical ReadCompactSize()",
-                ));
+        0xFD => {
+            let x = r.read_u16::<LittleEndian>()?;
+            if x < 0xFD {
+                Err(Error::new(ErrorKind::Other, "oh no!"))
+            } else {
+                Ok(x as u64)
             }
-            size
         }
-    };
-
-    Ok(n_size_ret)
+        n => Ok(n as u64),
+    }
 }
 
-fn read_varint<R: Read>(reader: &mut R) -> Result<u64> {
-    let first_byte = reader.read_u8()?;
+fn read_varint_core<R: Read>(r: &mut R) -> Result<u64> {
+    let mut n: u64 = 0;
+    loop {
+        let mut ch_data = [0; 1];
+        r.read_exact(&mut ch_data)?;
+        let ch_data = ch_data[0];
+        n = (n << 7) | (ch_data & 0x7F) as u64;
+        if ch_data & 0x80 != 0 {
+            n += 1;
+        } else {
+            return Ok(n);
+        }
+    }
+}
 
-    let result = match first_byte {
-        0xFD => reader.read_u16::<byteorder::LittleEndian>()? as u64,
-        0xFE => reader.read_u32::<byteorder::LittleEndian>()? as u64,
-        0xFF => reader.read_u64::<byteorder::LittleEndian>()?,
-        _ => first_byte as u64,
-    };
-
-    Ok(result)
+// Amount compression:
+// * If the amount is 0, output 0
+// * first, divide the amount (in base units) by the largest power of 10 possible; call the exponent e (e is max 9)
+// * if e<9, the last digit of the resulting number cannot be 0; store it as d, and drop it (divide by 10)
+//   * call the result n
+//   * output 1 + 10*(9*n + d - 1) + e
+// * if e==9, we only know the resulting number is not zero, so output 1 + 10*(n - 1) + 9
+// (this is decodable, as d is in [1-9] and e is in [0-9])
+#[allow(dead_code)]
+fn compress_amount(n: u64) -> u64 {
+    if n == 0 {
+        return 0;
+    }
+    let mut e = 0;
+    let mut n = n;
+    while n % 10 == 0 && e < 9 {
+        n /= 10;
+        e += 1;
+    }
+    if e < 9 {
+        let d = (n % 10) as usize;
+        assert!(d >= 1 && d <= 9);
+        n /= 10;
+        1 + (n * 9 + d as u64 - 1) * 10 + e as u64
+    } else {
+        1 + (n - 1) * 10 + 9
+    }
 }
 
 fn decompress_amount(x: u64) -> u64 {
+    // x = 0  OR  x = 1+10*(9*n + d - 1) + e  OR  x = 1+10*(n - 1) + 9
     if x == 0 {
         return 0;
     }
-    let x = x - 1;
+    let mut x = x - 1;
     // x = 10*(9*n + d - 1) + e
-    let (x, e) = (x / 10, x % 10);
-    let mut n = 0;
+    let e = (x % 10) as usize;
+    x /= 10;
+    let n;
     if e < 9 {
         // x = 9*n + d - 1
-        let (x, d) = (x / 9, x % 9);
-        let d = d + 1;
+        let d = (x % 9) + 1;
+        x /= 9;
         // x = n
         n = x * 10 + d;
     } else {
         n = x + 1;
     }
-    n * 10u64.pow(e as u32)
+    (0..e).fold(n, |acc, _| acc * 10)
 }
