@@ -14,13 +14,13 @@ use crate::{read_varint_core, BlockUndo};
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct BlockIndexRecord {
-    height: u32,
-    num_transactions: u32,
+    pub height: u32,
+    pub num_transactions: u32,
     validation_status: BlockStatus,
     file: Option<u32>,
     block_offset: Option<u64>,
     undo_offset: Option<u64>,
-    header: BlockHeader,
+    pub header: BlockHeader,
 }
 
 #[derive(Debug)]
@@ -258,33 +258,32 @@ impl Scanner {
         let size = magic_size[4..8].try_into().unwrap();
         let _size = u32::from_le_bytes(size);
 
-        
         bitcoin::Block::consensus_decode(&mut file).unwrap()
     }
 
     pub fn read_block(&mut self, id: &bitcoin::BlockHash) -> bitcoin::Block {
-        let block_index_record = self.block_index_record(id);
+        let record = self.block_index_record(id);
+        self.read_block_from_record(&record)
+    }
 
+    pub fn read_block_from_record(&mut self, record: &BlockIndexRecord) -> bitcoin::Block {
         let file = self
             .datadir
             .clone()
             .join("blocks")
-            .join(format!("blk{:05}.dat", block_index_record.file.unwrap()));
+            .join(format!("blk{:05}.dat", record.file.unwrap()));
 
         let mut file = std::fs::File::open(file).unwrap();
         let mut magic_size = [0; 8];
         // todo check magic
 
-        file.seek(SeekFrom::Start(
-            block_index_record.block_offset.unwrap() - 8,
-        ))
-        .unwrap();
+        file.seek(SeekFrom::Start(record.block_offset.unwrap() - 8))
+            .unwrap();
 
         file.read_exact(&mut magic_size).unwrap();
         let size = magic_size[4..8].try_into().unwrap();
         let _size = u32::from_le_bytes(size);
 
-        
         bitcoin::Block::consensus_decode(&mut file).unwrap()
     }
 
@@ -310,7 +309,6 @@ impl Scanner {
         let size = magic_size[4..8].try_into().unwrap();
         let _size = u32::from_le_bytes(size);
 
-        
         BlockUndo::parse(&mut file, Some(block_index_record.num_transactions)).unwrap()
         //let undo = (&mut file).unwrap();
     }

@@ -96,8 +96,6 @@ impl TxInUndo {
         };
 
         let script: Script = Script::from(script);
-        let asm = script.asm();
-        dbg!(asm);
 
         Ok(Self {
             coinbase,
