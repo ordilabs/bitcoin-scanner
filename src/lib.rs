@@ -96,7 +96,7 @@ impl TxInUndo {
         };
 
         let script: Script = Script::from(script);
-        let asm = script.clone().asm();
+        let asm = script.asm();
         dbg!(asm);
 
         Ok(Self {
@@ -175,7 +175,7 @@ fn compress_amount(n: u64) -> u64 {
     }
     if e < 9 {
         let d = (n % 10) as usize;
-        assert!(d >= 1 && d <= 9);
+        assert!((1..=9).contains(&d));
         n /= 10;
         1 + (n * 9 + d as u64 - 1) * 10 + e as u64
     } else {

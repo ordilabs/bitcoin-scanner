@@ -250,7 +250,7 @@ impl Scanner {
     }
 
     fn read_genesis(datadir: PathBuf) -> bitcoin::Block {
-        let file = datadir.clone().join("blocks").join("blk00000.dat");
+        let file = datadir.join("blocks").join("blk00000.dat");
         let mut file = std::fs::File::open(file).unwrap();
         let mut magic_size = [0; 8];
         // todo check magic
@@ -258,8 +258,8 @@ impl Scanner {
         let size = magic_size[4..8].try_into().unwrap();
         let _size = u32::from_le_bytes(size);
 
-        let block = bitcoin::Block::consensus_decode(&mut file).unwrap();
-        block
+        
+        bitcoin::Block::consensus_decode(&mut file).unwrap()
     }
 
     pub fn read_block(&mut self, id: &bitcoin::BlockHash) -> bitcoin::Block {
@@ -284,8 +284,8 @@ impl Scanner {
         let size = magic_size[4..8].try_into().unwrap();
         let _size = u32::from_le_bytes(size);
 
-        let block = bitcoin::Block::consensus_decode(&mut file).unwrap();
-        block
+        
+        bitcoin::Block::consensus_decode(&mut file).unwrap()
     }
 
     pub fn read_undo(&mut self, id: &bitcoin::BlockHash) -> BlockUndo {
@@ -310,8 +310,8 @@ impl Scanner {
         let size = magic_size[4..8].try_into().unwrap();
         let _size = u32::from_le_bytes(size);
 
-        let undo = BlockUndo::parse(&mut file, Some(block_index_record.num_transactions)).unwrap();
-        undo
+        
+        BlockUndo::parse(&mut file, Some(block_index_record.num_transactions)).unwrap()
         //let undo = (&mut file).unwrap();
     }
 
