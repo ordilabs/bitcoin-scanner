@@ -1,30 +1,12 @@
 use bitcoin::Script;
 use byteorder::{LittleEndian, ReadBytesExt};
-use std::env;
 use std::fs::File;
 use std::io::{self, Error, ErrorKind, Read, Result};
 
 const _MAX_SIZE: u64 = 0x02000000;
+pub mod scanner;
 
-//todo: use leveldb to get the file pos of the block undo data
-
-fn main() -> io::Result<()> {
-    let args: Vec<String> = env::args().collect();
-    if args.len() != 2 {
-        eprintln!("Usage: {} /path/to/rev*.dat", args[0]);
-        std::process::exit(1);
-    }
-
-    dbg!("Starting up...");
-
-    let filepath = &args[1];
-    let mut file = File::open(filepath)?;
-
-    parse_rev_file(&mut file)?;
-
-    Ok(())
-}
-
+#[allow(dead_code)]
 fn parse_rev_file(file: &mut File) -> io::Result<()> {
     const MAGIC_BYTES: [u8; 4] = [0xf9, 0xbe, 0xb4, 0xd9]; // Mainnet magic bytes
     const _HEADER_SIZE: u64 = 8; // 4 bytes for magic number + 4 bytes for data size
