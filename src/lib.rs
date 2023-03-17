@@ -4,7 +4,8 @@ use std::fs::File;
 use std::io::{self, Error, ErrorKind, Read, Result};
 
 const _MAX_SIZE: u64 = 0x02000000;
-pub mod scanner;
+mod scanner;
+pub use scanner::Scanner;
 
 #[allow(dead_code)]
 fn parse_rev_file(file: &mut File) -> io::Result<()> {
@@ -32,7 +33,7 @@ fn parse_rev_file(file: &mut File) -> io::Result<()> {
 
         dbg!("block", _data_size);
 
-        let block_undo = BlockUndo::parse(file)?;
+        let block_undo = BlockUndo::parse(file, None)?;
         dbg!(block_undo.inner.len());
 
         let mut undo_dsha = vec![0; 32];
@@ -55,24 +56,33 @@ pub struct TxUndo(Vec<TxInUndo>);
 
 pub struct BlockUndo {
     pub inner: Vec<TxUndo>,
+    pub dsha: [u8; 32],
 }
 
 impl BlockUndo {
-    pub fn parse<R: Read>(reader: &mut R) -> io::Result<Self> {
-        let ntxs = read_compact_size(reader)?;
-        dbg!(ntxs);
+    pub fn parse<R: Read>(reader: &mut R, ntxs: Option<u32>) -> io::Result<Self> {
+        let ntxs = match ntxs {
+            Some(ntxs) => {
+                let file_ntxs = read_compact_size(reader)? as u32 + 1;
+                assert_eq!(file_ntxs, ntxs);
+                ntxs
+            }
+            None => read_compact_size(reader)? as u32 + 1,
+        };
 
-        let mut inner = vec![TxUndo::default(); (ntxs + 1) as usize];
+        let mut inner = vec![TxUndo::default(); ntxs as usize];
 
         for tx_undo in inner.iter_mut().skip(1) {
             let ntxi = read_compact_size(reader)?;
-            //dbg!(reader.)
             for _ in 0..ntxi {
                 tx_undo.0.push(TxInUndo::parse(reader)?);
             }
         }
 
-        Ok(Self { inner })
+        let mut dsha = [0; 32];
+        reader.read_exact(&mut dsha)?;
+
+        Ok(Self { inner, dsha })
     }
 }
 
