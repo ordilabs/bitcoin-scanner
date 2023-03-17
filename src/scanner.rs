@@ -96,7 +96,7 @@ impl Scanner {
             Ok(db) => db,
             Err(e) => match e.code {
                 rusty_leveldb::StatusCode::LockError => panic!("Please close bitcoin core first"),
-                _ => panic!("Error opening database: {e:?}"),
+                _ => panic!("Error opening database: {:?}", e),
             },
         };
 
@@ -197,7 +197,7 @@ impl Scanner {
 
     pub fn block_index_record(&mut self, key: &bitcoin::BlockHash) -> BlockIndexRecord {
         let key1 = b"b";
-        let key2 = key.as_inner().as_slice();
+        let key2 = &key.as_inner()[..];
         let key = [key1, key2].concat();
         let value = self.block_index.get(&key).unwrap();
 
