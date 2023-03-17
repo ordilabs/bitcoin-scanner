@@ -192,15 +192,14 @@ fn decompress_amount(x: u64) -> u64 {
     // x = 10*(9*n + d - 1) + e
     let e = (x % 10) as usize;
     x /= 10;
-    let n;
-    if e < 9 {
+    let n = if e < 9 {
         // x = 9*n + d - 1
-        let d = (x % 9) + 1;
+        let d = (x % 9) as usize + 1;
         x /= 9;
         // x = n
-        n = x * 10 + d;
+        x * 10 + d as u64
     } else {
-        n = x + 1;
-    }
+        x + 1
+    };
     (0..e).fold(n, |acc, _| acc * 10)
 }
