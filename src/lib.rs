@@ -1,47 +1,10 @@
 use bitcoin::Script;
 use byteorder::{LittleEndian, ReadBytesExt};
-use std::fs::File;
 use std::io::{self, Error, ErrorKind, Read, Result};
 
 const _MAX_SIZE: u64 = 0x02000000;
 mod scanner;
 pub use scanner::Scanner;
-
-#[allow(dead_code)]
-fn parse_rev_file(file: &mut File) -> io::Result<()> {
-    const MAGIC_BYTES: [u8; 4] = [0xf9, 0xbe, 0xb4, 0xd9]; // Mainnet magic bytes
-    const _HEADER_SIZE: u64 = 8; // 4 bytes for magic number + 4 bytes for data size
-
-    loop {
-        let mut magic = [0; 4];
-        let read_magic = file.read(&mut magic)?;
-        if read_magic == 0 {
-            break; // EOF reached
-        }
-
-        if magic != MAGIC_BYTES {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Invalid magic bytes",
-            ));
-        }
-
-        let mut data_size_bytes = [0; 4];
-
-        file.read_exact(&mut data_size_bytes)?;
-        let _data_size = u32::from_le_bytes(data_size_bytes) as u64;
-
-        dbg!("block", _data_size);
-
-        let block_undo = BlockUndo::parse(file, None)?;
-        dbg!(block_undo.inner.len());
-
-        let mut undo_dsha = vec![0; 32];
-        file.read_exact(&mut undo_dsha)?;
-    }
-
-    Ok(())
-}
 
 #[derive(Debug, Clone)]
 pub struct TxInUndo {

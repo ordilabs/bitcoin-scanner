@@ -145,8 +145,6 @@ impl Scanner {
         let genesis = Self::read_genesis(datadir.clone());
         let genesis_hash = genesis.block_hash();
 
-        let block_obfs = None;
-
         Self {
             datadir: datadir,
             block_index: block_db,
