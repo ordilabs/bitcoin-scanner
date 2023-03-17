@@ -87,30 +87,29 @@ impl Scanner {
         block_index.push("index");
         chain_state.push("chainstate");
 
-        let mut options = Options::default();
-        options.create_if_missing = false;
+        let options = Options {
+            create_if_missing: false,
+            ..Default::default()
+        };
 
         let mut block_db = match DB::open(&block_index, options.clone()) {
             Ok(db) => db,
             Err(e) => match e.code {
                 rusty_leveldb::StatusCode::LockError => panic!("Please close bitcoin core first"),
-                _ => panic!("Error opening database: {:?}", e),
+                _ => panic!("Error opening database: {e:?}"),
             },
         };
 
         let obfuscate_key = b"\x0e\x00obfuscate_key";
 
-        let block_obfs = match block_db.get(obfuscate_key) {
-            Some(value) => Some(value[1..].to_vec()),
-            None => None,
-        };
+        let block_obfs = block_db.get(obfuscate_key).map(|value| value[1..].to_vec());
 
         // let obfuscate_value = block_db
         //     .get(obfuscate_key)
         //     .expect("Failed to read obfuscation key");
 
         // dbg!("If this hangs, please run bitcoind --reindex-chainstate");
-        let mut chain_db = match DB::open(&chain_state, options.clone()) {
+        let mut chain_db = match DB::open(&chain_state, options) {
             Ok(db) => db,
             Err(e) => {
                 let code = e.code;
@@ -127,10 +126,7 @@ impl Scanner {
         };
 
         let obfuscate_key = b"\x0e\x00obfuscate_key";
-        let chain_obfs = match chain_db.get(obfuscate_key) {
-            Some(value) => Some(value[1..].to_vec()),
-            None => None,
-        };
+        let chain_obfs = chain_db.get(obfuscate_key).map(|value| value[1..].to_vec());
 
         let tip = chain_db.get(b"B").unwrap();
         let tip = Self::obfs(&chain_obfs, &tip);
@@ -146,7 +142,7 @@ impl Scanner {
         let genesis_hash = genesis.block_hash();
 
         Self {
-            datadir: datadir,
+            datadir,
             block_index: block_db,
             chain_state: chain_db,
             last_file_number,
