@@ -1,8 +1,10 @@
 extern crate rusty_leveldb;
 use bitcoin::{consensus::Decodable, hashes::Hash, BlockHeader};
+//use mp4::data::DataBox;
 use rusty_leveldb::{LdbIterator, Options, DB};
 
 use std::{
+    collections::HashMap,
     io::Cursor,
     io::{Read, Seek, SeekFrom},
     path::PathBuf,
@@ -11,7 +13,7 @@ use std::{
 use crate::{read_varint_core, BlockUndo};
 
 // Define the structs
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct BlockIndexRecord {
     pub height: u32,
@@ -54,6 +56,7 @@ pub struct Scanner {
     genesis: bitcoin::Block,
     pub genesis_hash: bitcoin::BlockHash,
     pub tip_hash: bitcoin::BlockHash,
+    pub memory_index: HashMap<bitcoin::BlockHash, BlockIndexRecord>,
 }
 
 bitflags::bitflags! {
@@ -80,7 +83,7 @@ bitflags::bitflags! {
 }
 
 impl Scanner {
-    pub fn new(datadir: PathBuf) -> Self {
+    pub fn new(datadir: &PathBuf) -> Self {
         let mut block_index = datadir.clone();
         let mut chain_state = datadir.clone();
         block_index.push("blocks");
@@ -130,6 +133,7 @@ impl Scanner {
 
         let tip = chain_db.get(b"B").unwrap();
         let tip = Self::obfs(&chain_obfs, &tip);
+
         let tip_hash: bitcoin::BlockHash = bitcoin::hashes::Hash::from_slice(&tip).unwrap();
 
         // get the last file number
@@ -141,6 +145,7 @@ impl Scanner {
         let genesis = Self::read_genesis(datadir.clone());
         let genesis_hash = genesis.block_hash();
 
+        let datadir = datadir.to_path_buf();
         Self {
             datadir,
             block_index: block_db,
@@ -151,7 +156,52 @@ impl Scanner {
             tip_hash,
             chain_obfs,
             block_obfs,
+            memory_index: HashMap::new(),
         }
+    }
+
+    pub fn load_index(&mut self) -> Result<(), ()> {
+        let mut records = Vec::with_capacity(800_000);
+        let mut hashes = Vec::with_capacity(800_000);
+
+        let mut iter = self.block_index.new_iter().unwrap();
+
+        while iter.advance() {
+            let mut key = vec![];
+            let mut value = vec![];
+
+            let next = iter.current(&mut key, &mut value);
+            if !next {
+                break;
+            }
+
+            if key[0] == 'b' as u8 {
+                let mut r = Cursor::new(&value);
+                //let value = Self::obfs(&self.block_obfs, &value);
+                let record = Self::read_block_index_record(&mut r);
+
+                #[cfg(feature = "hex")]
+                //dbg!(hex::encode(&key));
+                //dbg!(&record);
+                1;
+
+                records.push(record);
+
+                let block_hash: bitcoin::BlockHash =
+                    bitcoin::hashes::Hash::from_slice(&key[1..33]).unwrap();
+                hashes.push(block_hash);
+            }
+        }
+
+        dbg!(records.len());
+
+        self.memory_index = records
+            .into_iter()
+            .zip(hashes)
+            .map(|(record, hash)| (hash, record))
+            .collect();
+
+        Ok(())
     }
 
     pub fn scan_blocks_db<F>(&mut self, mut f: F)
@@ -201,8 +251,11 @@ impl Scanner {
         let key = [key1, key2].concat();
         let value = self.block_index.get(&key).unwrap();
 
-        let mut r = Cursor::new(value);
+        let r = Cursor::new(&value);
+        Self::read_block_index_record(r)
+    }
 
+    fn read_block_index_record<R: Read>(mut r: R) -> BlockIndexRecord {
         let record_version = read_varint_core(&mut r).unwrap() as u32;
         // test the code base with earlier versions and see if it works
         // please PR if it does
@@ -236,7 +289,7 @@ impl Scanner {
         let header = BlockHeader::consensus_decode(&mut r).unwrap();
 
         // we've read all the data
-        assert!(r.position() == r.get_ref().len() as u64);
+        //assert!(r.position() == r.get_ref().len() as u64);
 
         BlockIndexRecord {
             header,
@@ -263,12 +316,11 @@ impl Scanner {
 
     pub fn read_block(&mut self, id: &bitcoin::BlockHash) -> bitcoin::Block {
         let record = self.block_index_record(id);
-        self.read_block_from_record(&record)
+        Self::read_block_from_record(&self.datadir, &record)
     }
 
-    pub fn read_block_from_record(&mut self, record: &BlockIndexRecord) -> bitcoin::Block {
-        let file = self
-            .datadir
+    pub fn read_block_from_record(datadir: &PathBuf, record: &BlockIndexRecord) -> bitcoin::Block {
+        let file = datadir
             .clone()
             .join("blocks")
             .join(format!("blk{:05}.dat", record.file.unwrap()));
