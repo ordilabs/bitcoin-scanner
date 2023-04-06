@@ -1,5 +1,5 @@
 extern crate rusty_leveldb;
-use bitcoin::{consensus::Decodable, hashes::Hash, BlockHeader};
+use bitcoin::{blockdata::block::Header, consensus::Decodable, hashes::Hash};
 use rusty_leveldb::{LdbIterator, Options, DB};
 
 use std::{
@@ -20,7 +20,7 @@ pub struct BlockIndexRecord {
     file: Option<u32>,
     block_offset: Option<u64>,
     undo_offset: Option<u64>,
-    pub header: BlockHeader,
+    pub header: Header,
 }
 
 #[derive(Debug)]
@@ -130,7 +130,7 @@ impl Scanner {
 
         let tip = chain_db.get(b"B").unwrap();
         let tip = Self::obfs(&chain_obfs, &tip);
-        let tip_hash: bitcoin::BlockHash = bitcoin::hashes::Hash::from_slice(&tip).unwrap();
+        let tip_hash: bitcoin::BlockHash = Hash::from_slice(&tip).unwrap();
 
         // get the last file number
         let key = b"l";
@@ -197,7 +197,7 @@ impl Scanner {
 
     pub fn block_index_record(&mut self, key: &bitcoin::BlockHash) -> BlockIndexRecord {
         let key1 = b"b";
-        let key2 = &key.as_inner()[..];
+        let key2 = &key.as_raw_hash().to_byte_array()[..];
         let key = [key1, key2].concat();
         let value = self.block_index.get(&key).unwrap();
 
@@ -233,7 +233,7 @@ impl Scanner {
             None
         };
 
-        let header = BlockHeader::consensus_decode(&mut r).unwrap();
+        let header = Header::consensus_decode(&mut r).unwrap();
 
         // we've read all the data
         assert!(r.position() == r.get_ref().len() as u64);
