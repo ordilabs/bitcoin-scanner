@@ -6,6 +6,8 @@ const _MAX_SIZE: u64 = 0x02000000;
 mod scanner;
 pub use scanner::Scanner;
 
+pub mod db;
+
 #[derive(Debug, Clone)]
 pub struct TxInUndo {
     pub coinbase: u64,
@@ -15,7 +17,7 @@ pub struct TxInUndo {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct TxUndo(Vec<TxInUndo>);
+pub struct TxUndo(pub Vec<TxInUndo>);
 
 pub struct BlockUndo {
     pub inner: Vec<TxUndo>,

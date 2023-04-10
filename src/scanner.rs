@@ -291,7 +291,7 @@ impl Scanner {
     pub fn read_undo(&mut self, id: &bitcoin::BlockHash) -> BlockUndo {
         let block_index_record = self.block_index_record(id);
 
-        dbg!(&block_index_record);
+        // dbg!(&block_index_record);
 
         let file = self
             .datadir
@@ -301,7 +301,7 @@ impl Scanner {
 
         let mut file = std::fs::File::open(file).unwrap();
 
-        dbg!(block_index_record.undo_offset);
+        // dbg!(block_index_record.undo_offset);
 
         file.seek(SeekFrom::Start(block_index_record.undo_offset.unwrap() - 8))
             .unwrap();
