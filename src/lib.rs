@@ -1,4 +1,4 @@
-use bitcoin::Script;
+use bitcoin::ScriptBuf;
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::io::{self, Error, ErrorKind, Read, Result};
 
@@ -10,7 +10,7 @@ pub use scanner::Scanner;
 pub struct TxInUndo {
     pub coinbase: u64,
     pub height: u64,
-    pub script: Script,
+    pub script: ScriptBuf,
     pub amount: u64,
 }
 
@@ -95,7 +95,7 @@ impl TxInUndo {
             }
         };
 
-        let script: Script = Script::from(script);
+        let script: ScriptBuf = ScriptBuf::from(script);
 
         Ok(Self {
             coinbase,
