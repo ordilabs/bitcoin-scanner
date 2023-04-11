@@ -251,7 +251,8 @@ impl Scanner {
 
     fn read_genesis(datadir: PathBuf) -> bitcoin::Block {
         let file = datadir.join("blocks").join("blk00000.dat");
-        let mut file = std::fs::File::open(file).unwrap();
+        let mut file = std::fs::File::open(file)
+            .expect("First blk file not found, do you have pruning enabled?");
         let mut magic_size = [0; 8];
         // todo check magic
         file.read_exact(&mut magic_size).unwrap();
