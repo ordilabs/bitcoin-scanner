@@ -14,6 +14,7 @@ use bitcoin::{BlockHash, Transaction};
 use bitcoin_scanner::db::{InscriptionRecord, DB};
 use bitcoin_scanner::{Scanner, TxInUndo};
 use std::str::FromStr;
+use std::io::{self, Write};
 
 pub fn main() {
     let data_dir = util::bitcoin_data_dir(bitcoin::Network::Bitcoin);
@@ -22,6 +23,8 @@ pub fn main() {
     let tip_hash = scanner.tip_hash;
     let _tip = scanner.read_block(&tip_hash);
 
+    // Flip here to write to std::out in TSV format instead.
+    let use_db = true;
     let mut db = DB::setup(true).unwrap();
 
     let mut current_hash = tip_hash;
@@ -43,7 +46,7 @@ pub fn main() {
         // println!("Block len {0:?}", block.txdata.len());
         // println!("Undo len {0:?}", undo.inner.len());
 
-        block.txdata.iter().for_each(|tx| {
+        block.txdata.iter().enumerate().for_each(|(tx_i, tx)| {
             // Weirdly not needed it seems
             // if tx.is_coin_base() {
             //     return;
@@ -100,8 +103,8 @@ pub fn main() {
                     genesis_inscribers: inscribers,
                     genesis_amount: tx.output[i].value,
                     address: address.to_string(),
-                    content_length: ins.body().unwrap().len(),
-                    content_type: ins.content_type().unwrap().to_string(),
+                    content_length: ins.body().unwrap_or(&Vec::new()).len(),
+                    content_type: ins.content_type().unwrap_or("").to_string(),
                     // Transform to human-readable (big-endian).
                     genesis_block_hash: block_hash
                         .iter()
@@ -112,15 +115,20 @@ pub fn main() {
                         .unwrap(),
                     genesis_fee: calculate_fee(tx, tx_ins),
                     genesis_height: record.height,
+                    short_input_id: calculate_short_input_id(record.height, tx_i.try_into().unwrap(), i.try_into().unwrap()),
                 };
 
                 ins_block_count += 1;
 
                 // TODO: Not really async for now for ease of debugging.
                 // TBD: Async strategy
-                block_on(async {
-                    let _res = db.insert(&insert_rec).await;
-                });
+                if use_db {
+                    block_on(async {
+                        let _res = db.insert(&insert_rec).await;
+                    });
+                } else {
+                    let _res = print_tsv(&insert_rec);
+                }
             }
 
             blk_tx_count += 1;
@@ -131,7 +139,8 @@ pub fn main() {
             record.height, ins_block_count
         );
 
-        // We can stop scanning once we have parsed the block containing inscription #0
+        // We can stop scanning once we have parsed the block containing inscription #0, i.e. block
+        // height 767430.
         let stop_block =
             BlockHash::from_str("000000000000000000029730547464F056F8B6E2E0A02EAF69C24389983A04F5")
                 .unwrap();
@@ -150,4 +159,18 @@ fn calculate_fee(tx: &Transaction, tx_undo: &Vec<TxInUndo>) -> u64 {
     let output_sum: u64 = tx.output.iter().map(|output| output.value).sum();
 
     input_sum - output_sum
+}
+
+fn print_tsv(r: &InscriptionRecord ) -> io::Result<()> {
+    let stdout = io::stdout();
+    let mut handle = stdout.lock();
+
+    write!(&mut handle, "{:?}\t{:?}\t{}\t{:?}\t{}\t{}\t{}\t{}\t{:?}\t{}\t{}\t{}", r.commit_output_script, r.txid, r.index, r.genesis_inscribers, r.genesis_amount, r.address, r.content_length, r.content_type, r.genesis_block_hash, r.genesis_fee, r.genesis_height, r.short_input_id)?;
+    writeln!(&mut handle)?;
+
+    Ok(())
+}
+
+fn calculate_short_input_id(block_height: u32, transaction_index: u32, input_index: u16) -> i64 {
+    (((block_height as i64) << 40) | ((transaction_index as i64) << 16) | (input_index as i64)) * -1
 }
