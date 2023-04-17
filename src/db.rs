@@ -14,6 +14,7 @@ pub struct InscriptionRecord {
     pub genesis_block_hash: [u8; 32],
     pub genesis_fee: u64,
     pub genesis_height: u32,
+    pub short_input_id: i64,
     // pub ssn: u64, // Need ord/full blockchain context
 }
 
@@ -44,7 +45,8 @@ impl DB {
                 content_type             VARCHAR NOT NULL,
                 genesis_block_hash       BYTEA NOT NULL,
                 genesis_fee              BIGINT NOT NULL,
-                genesis_height           INTEGER NOT NULL
+                genesis_height           INTEGER NOT NULL,
+                short_input_id           BIGINT NOT NULL
                 )
         ",
         )?;
@@ -61,7 +63,7 @@ impl DB {
     pub async fn insert(&mut self, r: &InscriptionRecord) -> Result<u64, Error> {
         let stmt = self
             .client
-            .prepare("INSERT INTO inscription_record (commit_output_script, txid, index, genesis_inscribers, genesis_amount, address, content_length, content_type, genesis_block_hash, genesis_fee, genesis_height) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)");
+            .prepare("INSERT INTO inscription_record (commit_output_script, txid, index, genesis_inscribers, genesis_amount, address, content_length, content_type, genesis_block_hash, genesis_fee, genesis_height, short_input_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)");
 
         let stmt = match stmt {
             Ok(s) => s,
@@ -88,6 +90,7 @@ impl DB {
                 &r.genesis_block_hash.to_vec(),
                 &(r.genesis_fee as i64),
                 &(r.genesis_height as i32),
+                &r.short_input_id,
             ],
         ) {
             Ok(rows_affected) => Ok(rows_affected),
