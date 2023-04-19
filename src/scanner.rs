@@ -4,7 +4,7 @@ use rusty_leveldb::{LdbIterator, Options, DB};
 
 use std::{
     io::Cursor,
-    io::{Read, Seek, SeekFrom},
+    io::{BufReader, Read, Seek, SeekFrom},
     path::PathBuf,
 };
 
@@ -274,7 +274,8 @@ impl Scanner {
             .join("blocks")
             .join(format!("blk{:05}.dat", record.file.unwrap()));
 
-        let mut file = std::fs::File::open(file).unwrap();
+        let f = std::fs::File::open(file).unwrap();
+        let mut file = BufReader::new(f);
         let mut magic_size = [0; 8];
         // todo check magic
 
@@ -299,7 +300,8 @@ impl Scanner {
             .join("blocks")
             .join(format!("rev{:05}.dat", block_index_record.file.unwrap()));
 
-        let mut file = std::fs::File::open(file).unwrap();
+        let f = std::fs::File::open(file).unwrap();
+        let mut file = BufReader::new(f);
 
         // dbg!(block_index_record.undo_offset);
 
