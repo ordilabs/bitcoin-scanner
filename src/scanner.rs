@@ -4,7 +4,7 @@ use rusty_leveldb::{LdbIterator, Options, DB};
 
 use std::{
     io::Cursor,
-    io::{Read, Seek, SeekFrom},
+    io::{BufReader, Read, Seek, SeekFrom},
     path::PathBuf,
 };
 
