@@ -27,6 +27,7 @@ pub fn bitcoin_data_dir(network: bitcoin::Network) -> PathBuf {
         bitcoin::Network::Signet => {
             data_dir.push("signet");
         }
+        _ => todo!(),
     };
 
     // Check if bitcoin.conf contains a datadir setting and if so, use that instead.
