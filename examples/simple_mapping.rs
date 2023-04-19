@@ -11,10 +11,18 @@ use ord_labs::*;
 use async_std::task::block_on;
 use bitcoin::opcodes::all::*;
 use bitcoin::{BlockHash, Transaction};
-use bitcoin_scanner::db::{InscriptionRecord, DB};
+use bitcoin_scanner::db::{InscriptionRecord, SatsNameRecord, DB};
 use bitcoin_scanner::{Scanner, TxInUndo};
+use serde::{Deserialize, Serialize};
 use std::io::{self, Write};
 use std::str::FromStr;
+
+#[derive(Serialize, Deserialize, Debug)]
+struct DotSats<'a> {
+    p: &'a str,
+    op: &'a str,
+    name: &'a str,
+}
 
 pub fn main() {
     let data_dir = util::bitcoin_data_dir(bitcoin::Network::Bitcoin);
@@ -41,6 +49,7 @@ pub fn main() {
 
         // Count inscriptions found in each block.
         let mut ins_block_count = 0;
+        let mut sats_name_count = 0;
 
         // Only for debugging
         // println!("Block len {0:?}", block.txdata.len());
@@ -110,11 +119,24 @@ pub fn main() {
 
                 ins_block_count += 1;
 
+                let maybe_sats_name = identify_sats_name(ins);
+
                 // TODO: Not really async for now for ease of debugging.
                 // TBD: Async strategy
                 if use_db {
                     block_on(async {
-                        let _res = db.insert(&insert_rec).await;
+                        let ins_res = db.insert_inscription(&insert_rec).await;
+
+                        if maybe_sats_name.is_ok() {
+                            sats_name_count += 1;
+                            let sats_name_rec = SatsNameRecord {
+                                _id: 0,
+                                inscription_record_id: ins_res.unwrap(),
+                                name: maybe_sats_name.unwrap(),
+                            };
+
+                            let _res = db.insert_sats_name(&sats_name_rec).await;
+                        }
                     });
                 } else {
                     let _res = print_tsv(&insert_rec);
@@ -125,8 +147,8 @@ pub fn main() {
         });
 
         println!(
-            "Processed block {:?}, inserted {} inscription records.",
-            record.height, ins_block_count
+            "Processed block {:?}, inserted {} inscription records and {} sats names.",
+            record.height, ins_block_count, sats_name_count
         );
 
         // We can stop scanning once we have parsed the block containing inscription #0, i.e. block
@@ -178,4 +200,25 @@ fn print_tsv(r: &InscriptionRecord) -> io::Result<()> {
 
 fn calculate_short_input_id(block_height: u32, transaction_index: u32, input_index: u16) -> i64 {
     (((block_height as i64) << 40) | ((transaction_index as i64) << 16) | (input_index as i64)) * -1
+}
+
+fn identify_sats_name(ins: Inscription) -> Result<String, ()> {
+    if ins.media() != Media::Text {
+        return Err(());
+    }
+
+    let body = ins.body().unwrap_or_default();
+
+    let dotsats = serde_json::from_slice::<DotSats>(body).ok();
+    if dotsats.is_none() {
+        return Err(());
+    }
+
+    let dotsats = dotsats.unwrap();
+
+    if dotsats.p != "sns" || dotsats.op != "reg" {
+        return Err(());
+    }
+
+    return Ok(dotsats.name.to_string());
 }
