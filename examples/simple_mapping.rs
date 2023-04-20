@@ -96,6 +96,11 @@ pub fn main() {
                 .unwrap();
                 let txid: [u8; 32] = *tx.txid().to_raw_hash().as_ref();
                 let block_hash: [u8; 32] = *block.header.block_hash().as_ref();
+                let short_input_id = calculate_short_input_id(
+                    record.height,
+                    tx_i.try_into().unwrap(),
+                    i.try_into().unwrap(),
+                );
 
                 let insert_rec = InscriptionRecord {
                     _id: 0,
@@ -110,11 +115,7 @@ pub fn main() {
                     genesis_block_hash: block_hash,
                     genesis_fee: calculate_fee(tx, tx_ins),
                     genesis_height: record.height,
-                    short_input_id: calculate_short_input_id(
-                        record.height,
-                        tx_i.try_into().unwrap(),
-                        i.try_into().unwrap(),
-                    ),
+                    short_input_id: short_input_id,
                 };
 
                 ins_block_count += 1;
@@ -132,6 +133,7 @@ pub fn main() {
                             let sats_name_rec = SatsNameRecord {
                                 _id: 0,
                                 inscription_record_id: ins_res.unwrap(),
+                                short_input_id: short_input_id,
                                 name: maybe_sats_name.unwrap(),
                             };
 
@@ -211,7 +213,18 @@ fn identify_sats_name(ins: Inscription) -> Result<String, ()> {
 
     let dotsats = serde_json::from_slice::<DotSats>(body).ok();
     if dotsats.is_none() {
-        return Err(());
+        // Check if this is a simple registration in the body instead:
+        // See: https://docs.sats.id/sats-names/protocol-spec#simple-registration
+        match std::str::from_utf8(body) {
+            Ok(s) => {
+                let result = parse_sats_name_body(s);
+                match result {
+                    Some(s) => return Ok(s),
+                    None => return Err(()),
+                }
+            }
+            Err(_e) => return Err(()),
+        }
     }
 
     let dotsats = dotsats.unwrap();
@@ -220,5 +233,33 @@ fn identify_sats_name(ins: Inscription) -> Result<String, ()> {
         return Err(());
     }
 
-    return Ok(dotsats.name.to_string());
+    // Parse name and ensure all the specs are followed
+    // 1. Turn the string into lowercase
+    // 2. Delete everything after the first whitespace or newline (\n)
+    // 3. Trim all whitespace and newlines
+    // 4. Validate that there is only one period (.) in the name
+    // 5. Validate that the string ends with .sats
+    // See: https://docs.sats.id/sats-names/protocol-spec#validate-names-1
+    let result = parse_sats_name_body(dotsats.name);
+    match result {
+        Some(s) => return Ok(s),
+        None => return Err(()),
+    }
+}
+
+fn parse_sats_name_body(input: &str) -> Option<String> {
+    let input = input.to_lowercase();
+    let mut parts = input.splitn(2, |c| c == ' ' || c == '\n');
+    let first_part = parts.next()?.trim();
+
+    let period_count = first_part.chars().filter(|&c| c == '.').count();
+    if period_count != 1 {
+        return None;
+    }
+
+    if !first_part.ends_with(".sats") {
+        return None;
+    }
+
+    Some(first_part.to_string())
 }

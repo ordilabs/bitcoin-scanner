@@ -21,6 +21,7 @@ pub struct InscriptionRecord {
 pub struct SatsNameRecord {
     pub _id: i32,
     pub inscription_record_id: i32,
+    pub short_input_id: i64,
     pub name: String,
 }
 
@@ -63,6 +64,7 @@ impl DB {
             CREATE TABLE IF NOT EXISTS sats_name (
                 id                       SERIAL PRIMARY KEY,
                 inscription_record_id    INTEGER NOT NULL REFERENCES inscription_record(id),
+                short_input_id           BIGINT NOT NULL,
                 name                     VARCHAR NOT NULL
                 )
         ",
@@ -124,17 +126,17 @@ impl DB {
     pub async fn insert_sats_name(&mut self, r: &SatsNameRecord) -> Result<u64, Error> {
         let stmt = self
             .client
-            .prepare("INSERT INTO sats_name (inscription_record_id, name) VALUES ($1, $2)");
+            .prepare("INSERT INTO sats_name (inscription_record_id, short_input_id, name) VALUES ($1, $2, $3)");
 
         let stmt = match stmt {
             Ok(s) => s,
             Err(e) => return Err(e),
         };
 
-        match self
-            .client
-            .execute(&stmt, &[&r.inscription_record_id, &r.name])
-        {
+        match self.client.execute(
+            &stmt,
+            &[&r.inscription_record_id, &r.short_input_id, &r.name],
+        ) {
             Ok(rows_affected) => Ok(rows_affected),
             Err(err) => {
                 println!("Error: {:?}", err);
