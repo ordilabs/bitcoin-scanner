@@ -60,88 +60,92 @@ pub fn main() {
             // if tx.is_coin_base() {
             //     return;
             // };
+            let maybe_inscriptions = Inscription::from_transaction_experiment(tx);
 
-            if let Some(ins) = Inscription::from_transaction(tx) {
-                let tx_ins = &undo.inner[blk_tx_count].0;
-                let spk = tx_ins[0].script.to_bytes();
+            for (i, inscription) in maybe_inscriptions.into_iter().enumerate() {
+                if let Some(ins) = inscription {
+                    // We selectively override the index with this because all
+                    // the inscriptions that were inscribed on input index > 0
+                    // should also be inscribed on output 0.
+                    let oi = 0;
 
-                // Only Inscriptions at index 0 are currently recognized so we
-                // can hardcode it here for now.
-                let i = 0;
+                    let tx_ins = &undo.inner[blk_tx_count].0;
+                    let spk = tx_ins[i].script.to_bytes();
 
-                let mut possible_inscriber: [u8; 32] = [0; 32];
-                let mut inscribers: Vec<[u8; 32]> = vec![];
+                    let mut possible_inscriber: [u8; 32] = [0; 32];
+                    let mut inscribers: Vec<[u8; 32]> = vec![];
 
-                for w in tx.input[i].witness.to_vec() {
-                    // Length matches to a x-only pubkey. We save it to check
-                    // if the next opcode is a checksigadd.
-                    if w.len() == 32 {
-                        possible_inscriber = w.clone().try_into().unwrap();
-                    }
+                    for w in tx.input[i].witness.to_vec() {
+                        // Length matches to a x-only pubkey. We save it to check
+                        // if the next opcode is a checksigadd.
+                        if w.len() == 32 {
+                            possible_inscriber = w.clone().try_into().unwrap();
+                        }
 
-                    // If we get a checksigadd we can put the possible
-                    // inscriber in to the DB.
-                    if w.len() == 1 && w[0] == OP_CHECKSIGADD.to_u8() {
-                        if possible_inscriber != [0; 32] {
-                            inscribers.push(possible_inscriber);
-                            possible_inscriber = [0; 32];
+                        // If we get a checksigadd we can put the possible
+                        // inscriber in to the DB.
+                        if w.len() == 1 && w[0] == OP_CHECKSIGADD.to_u8() {
+                            if possible_inscriber != [0; 32] {
+                                inscribers.push(possible_inscriber);
+                                possible_inscriber = [0; 32];
+                            }
                         }
                     }
-                }
 
-                let address = bitcoin::Address::from_script(
-                    &tx.output[i].script_pubkey,
-                    bitcoin::Network::Bitcoin,
-                )
-                .unwrap();
-                let txid: [u8; 32] = *tx.txid().to_raw_hash().as_ref();
-                let block_hash: [u8; 32] = *block.header.block_hash().as_ref();
-                let short_input_id = calculate_short_input_id(
-                    record.height,
-                    tx_i.try_into().unwrap(),
-                    i.try_into().unwrap(),
-                );
+                    let address = bitcoin::Address::from_script(
+                        &tx.output[oi].script_pubkey,
+                        bitcoin::Network::Bitcoin,
+                    )
+                    .unwrap();
+                    let txid: [u8; 32] = *tx.txid().to_raw_hash().as_ref();
+                    let block_hash: [u8; 32] = *block.header.block_hash().as_ref();
+                    let short_input_id = calculate_short_input_id(
+                        record.height,
+                        tx_i.try_into().unwrap(),
+                        i.try_into().unwrap(),
+                    );
 
-                let insert_rec = InscriptionRecord {
-                    _id: 0,
-                    commit_output_script: spk,
-                    txid: txid,
-                    index: i,
-                    genesis_inscribers: inscribers,
-                    genesis_amount: tx.output[i].value,
-                    address: address.to_string(),
-                    content_length: ins.body().unwrap_or(&Vec::new()).len(),
-                    content_type: ins.content_type().unwrap_or("").to_string(),
-                    genesis_block_hash: block_hash,
-                    genesis_fee: calculate_fee(tx, tx_ins),
-                    genesis_height: record.height,
-                    short_input_id: short_input_id,
-                };
+                    let insert_rec = InscriptionRecord {
+                        _id: 0,
+                        commit_output_script: spk,
+                        txid: txid,
+                        index: i,
+                        genesis_inscribers: inscribers,
+                        genesis_amount: tx.output[oi].value,
+                        address: address.to_string(),
+                        content_length: ins.body().unwrap_or(&Vec::new()).len(),
+                        content_type: ins.content_type().unwrap_or("").to_string(),
+                        genesis_block_hash: block_hash,
+                        genesis_fee: calculate_fee(tx, tx_ins),
+                        genesis_height: record.height,
+                        short_input_id: short_input_id,
+                    };
 
-                ins_block_count += 1;
+                    ins_block_count += 1;
 
-                let maybe_sats_name = identify_sats_name(ins);
+                    let maybe_sats_name = identify_sats_name(ins);
 
-                // TODO: Not really async for now for ease of debugging.
-                // TBD: Async strategy
-                if use_db {
-                    block_on(async {
-                        let ins_res = db.insert_inscription(&insert_rec).await;
+                    // TODO: Not really async for now for ease of debugging.
+                    // TBD: Async strategy
+                    if use_db {
+                        block_on(async {
+                            let ins_res = db.insert_inscription(&insert_rec).await;
 
-                        if maybe_sats_name.is_ok() {
-                            sats_name_count += 1;
-                            let sats_name_rec = SatsNameRecord {
-                                _id: 0,
-                                inscription_record_id: ins_res.unwrap(),
-                                short_input_id: short_input_id,
-                                name: maybe_sats_name.unwrap(),
-                            };
+                            if maybe_sats_name.is_ok() {
+                                sats_name_count += 1;
+                                let sats_name_rec = SatsNameRecord {
+                                    _id: 0,
+                                    inscription_record_id: ins_res.unwrap(),
+                                    short_input_id: short_input_id,
+                                    name: maybe_sats_name.unwrap(),
+                                };
 
-                            let _res = db.insert_sats_name(&sats_name_rec).await;
-                        }
-                    });
-                } else {
-                    let _res = print_tsv(&insert_rec);
+                                let _res = db.insert_sats_name(&sats_name_rec).await;
+                            }
+                        });
+                    } else {
+                        let _res = print_tsv(&insert_rec);
+                    }
                 }
             }
 
