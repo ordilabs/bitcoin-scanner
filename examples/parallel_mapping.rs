@@ -15,11 +15,13 @@ use bitcoin_scanner::{BlockIndexRecord, Scanner, TxInUndo};
 use deadpool_postgres::{Config, Pool, PoolConfig};
 use num_cpus;
 use serde::{Deserialize, Serialize};
-use std::io::{self, Write};
 use std::str::FromStr;
 use std::sync::mpsc;
+use std::sync::mpsc::Receiver;
 use tokio::runtime;
 use tokio_postgres::NoTls;
+use std::sync::{Arc, Mutex};
+use async_std::task::block_on;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct DotSats<'a> {
@@ -44,7 +46,7 @@ async fn create_db_pool() -> Pool {
     cfg.create_pool(None, NoTls).unwrap()
 }
 
-fn index_parser(tx: mpsc::Sender<(&Scanner, Vec<BlockIndexRecord>)>, scanner: Scanner, db: DB) {
+fn index_parser(tx: mpsc::Sender<(Arc<Scanner>, Vec<BlockIndexRecord>)>, scanner: Arc<Scanner>, pool: Arc<Pool>) {
     println!("IndexParser: Started!");
     let mut current_hash = scanner.tip_hash;
 
@@ -62,7 +64,7 @@ fn index_parser(tx: mpsc::Sender<(&Scanner, Vec<BlockIndexRecord>)>, scanner: Sc
                 .unwrap();
         if current_hash == stop_block {
             // Send last batch.
-            tx.send((&scanner, batch)).unwrap();
+            tx.send((scanner, batch)).unwrap();
             println!("IndexParser: Finished!");
             break;
         }
@@ -70,13 +72,14 @@ fn index_parser(tx: mpsc::Sender<(&Scanner, Vec<BlockIndexRecord>)>, scanner: Sc
         current_hash = record.header.prev_blockhash;
 
         if batch.len() == batch_size {
-            tx.send((&scanner, batch)).unwrap();
+            tx.send((scanner, batch)).unwrap();
             batch = vec![];
         }
     }
 }
 
-fn worker(id: usize, rx: &mpsc::Receiver<(&Scanner, Vec<BlockIndexRecord>)>, pool: &Pool) {
+fn worker(id: usize, shared_rx: &Arc<Mutex<Receiver<(Arc<Scanner>, Vec<BlockIndexRecord>)>>>, pool: &Pool) {
+    let rx = shared_rx.lock().unwrap();
     while let Ok((scanner, batch)) = rx.recv() {
         for record in batch {
             let block = scanner.read_block_from_record(&record);
@@ -153,20 +156,23 @@ fn worker(id: usize, rx: &mpsc::Receiver<(&Scanner, Vec<BlockIndexRecord>)>, poo
 
                     let maybe_sats_name = identify_sats_name(ins);
 
-                    let db = pool.get().await.unwrap();
-                    let ins_res = db.insert_inscription(&insert_rec).await;
+                    block_on(async {
+                        let db = pool.get().await.unwrap();
+                        let ord_db = DB::setup_with_client(false, db).unwrap();
+                        let ins_res = ord_db.insert_inscription(&insert_rec).await;
 
-                    if maybe_sats_name.is_ok() {
-                        sats_name_count += 1;
-                        let sats_name_rec = SatsNameRecord {
-                            _id: 0,
-                            inscription_record_id: ins_res.unwrap(),
-                            short_input_id: short_input_id,
-                            name: maybe_sats_name.unwrap(),
-                        };
+                        if maybe_sats_name.is_ok() {
+                            sats_name_count += 1;
+                            let sats_name_rec = SatsNameRecord {
+                                _id: 0,
+                                inscription_record_id: ins_res.unwrap(),
+                                short_input_id: short_input_id,
+                                name: maybe_sats_name.unwrap(),
+                            };
 
-                        let _res = db.insert_sats_name(&sats_name_rec).await;
-                    }
+                            let _res = ord_db.insert_sats_name(&sats_name_rec).await;
+                        }
+                    });
                 }
 
                 blk_tx_count += 1;
@@ -183,13 +189,11 @@ fn worker(id: usize, rx: &mpsc::Receiver<(&Scanner, Vec<BlockIndexRecord>)>, poo
 pub fn main() {
     let data_dir = util::bitcoin_data_dir(bitcoin::Network::Bitcoin);
     let mut scanner = Scanner::new(data_dir);
-    let mut db = DB::setup(true).unwrap();
+    let scanner = Arc::new(scanner);
+    // just for general reset
+    let _db = DB::setup(true).unwrap();
 
     let (tx, rx) = mpsc::channel();
-
-    let index_parser_handle = std::thread::spawn(move || {
-        index_parser(tx, scanner, db);
-    });
 
     let pool = runtime::Builder::new_current_thread()
         .enable_all()
@@ -197,15 +201,23 @@ pub fn main() {
         .unwrap()
         .block_on(create_db_pool());
 
+    let shared_pool = Arc::new(pool);
+
+    let index_parser_handle = std::thread::spawn(move || {
+        index_parser(tx, scanner, shared_pool);
+    });
+
+    let shared_rx = Arc::new(Mutex::new(rx));
+
     rayon::scope(|scope| {
         let num_consumers = num_cpus::get();
 
         for id in 0..num_consumers {
-            let rx = rx.clone();
-            let pool = pool.clone();
+            let shared_rx = shared_rx.clone();
+            let pool = Arc::clone(&shared_pool);
 
             scope.spawn(move |_| {
-                worker(id, &rx, &pool);
+                worker(id, &shared_rx, &*pool);
             });
         }
     });
@@ -219,31 +231,6 @@ fn calculate_fee(tx: &Transaction, tx_undo: &Vec<TxInUndo>) -> u64 {
     let output_sum: u64 = tx.output.iter().map(|output| output.value).sum();
 
     input_sum - output_sum
-}
-
-fn print_tsv(r: &InscriptionRecord) -> io::Result<()> {
-    let stdout = io::stdout();
-    let mut handle = stdout.lock();
-
-    write!(
-        &mut handle,
-        "{:?}\t{:?}\t{}\t{:?}\t{}\t{}\t{}\t{}\t{:?}\t{}\t{}\t{}",
-        r.commit_output_script,
-        r.txid,
-        r.index,
-        r.genesis_inscribers,
-        r.genesis_amount,
-        r.address,
-        r.content_length,
-        r.content_type,
-        r.genesis_block_hash,
-        r.genesis_fee,
-        r.genesis_height,
-        r.short_input_id
-    )?;
-    writeln!(&mut handle)?;
-
-    Ok(())
 }
 
 fn calculate_short_input_id(block_height: u32, transaction_index: u32, input_index: u16) -> i64 {
