@@ -13,7 +13,7 @@ bitflags = "2.0.1"
 byteorder = "1.4.3"
 more-asserts = "0.3.1"
 mp4 = "0.13.0"
-ord-labs = { version = "0.1.0", git = "https://github.com/ordilabs/ord-labs.git", branch = "felix_experiment" }
+ord-labs = { version = "0.1.0", git = "https://github.com/FelixWeis/ord.git", branch = "f/23w16-hidden-inscriptions", features = ["unstable"] }
 postgres = "0.19.5"
 rusty-leveldb = "1.0.6"
 serde = "1.0.159"

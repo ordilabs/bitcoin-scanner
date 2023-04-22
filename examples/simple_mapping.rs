@@ -60,7 +60,7 @@ pub fn main() {
             // if tx.is_coin_base() {
             //     return;
             // };
-            let maybe_inscriptions = Inscription::from_transaction_experiment(tx);
+            let maybe_inscriptions = Inscription::from_transaction_vec(tx);
 
             for (i, inscription) in maybe_inscriptions.into_iter().enumerate() {
                 if let Some(ins) = inscription {

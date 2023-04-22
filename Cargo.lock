@@ -742,7 +742,7 @@ checksum = "b7e5500299e16ebb147ae15a00a942af264cf3688f47923b8fc2cd5858f23ad3"
 [[package]]
 name = "ord-labs"
 version = "0.1.0"
-source = "git+https://github.com/ordilabs/ord-labs.git?branch=felix_experiment#214fb1b5b4e5504b38cc7814a1dfa298c4025163"
+source = "git+https://github.com/FelixWeis/ord.git?branch=f/23w16-hidden-inscriptions#eb4ed5e21d68b5e38372983b5469a3c66e84f9b3"
 dependencies = [
  "anyhow",
  "bitcoin",
