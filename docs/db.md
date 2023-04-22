@@ -3,23 +3,26 @@
 ## macos
 
 ### Install Postgres
-
-`brew install postgres`
+```
+brew install postgresql@14
+brew services restart postgresql@14
+```
 
 ### Create and configure user and db
 
 ```
 $ createuser orduser
 $ createdb ordscanner
-$ psql
-?=# alter user orduser with encrypted password 'testtest';
-?=# grant all privileges on database ordscanner to orduser;
+$ psql --username=$(whoami) --dbname=ordscanner
+ordscanner=> alter user orduser with encrypted password 'testtest';
+ALTER ROLE
+ordscanner=> grant all privileges on database ordscanner to orduser;
+GRANT
 ```
 
 ### Reset the db
 
 ```
-$ psql
-$-# \c ordscanner
-ordscanner=#TRUNCATE TABLE inscription_records;
+$  psql --username=$(whoami) --dbname=ordscanner
+ordscanner=# TRUNCATE TABLE inscription_record, sats_name;
 ```
