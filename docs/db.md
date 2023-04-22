@@ -13,9 +13,11 @@ brew services restart postgresql@14
 ```
 $ createuser orduser
 $ createdb ordscanner
-$ psql
-?=# alter user orduser with encrypted password 'testtest';
-?=# grant all privileges on database ordscanner to orduser;
+$ psql --username=$(whoami) --dbname=ordscanner
+ordscanner=> alter user orduser with encrypted password 'testtest';
+ALTER ROLE
+ordscanner=> grant all privileges on database ordscanner to orduser;
+GRANT
 ```
 
 ### Reset the db
