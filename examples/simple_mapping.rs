@@ -72,19 +72,30 @@ pub fn main() {
                 let mut possible_inscriber: [u8; 32] = [0; 32];
                 let mut inscribers: Vec<[u8; 32]> = vec![];
 
-                for w in tx.input[i].witness.to_vec() {
-                    // Length matches to a x-only pubkey. We save it to check
-                    // if the next opcode is a checksigadd.
-                    if w.len() == 32 {
-                        possible_inscriber = w.clone().try_into().unwrap();
-                    }
-
-                    // If we get a checksigadd we can put the possible
-                    // inscriber in to the DB.
-                    if w.len() == 1 && w[0] == OP_CHECKSIGADD.to_u8() {
-                        if possible_inscriber != [0; 32] {
-                            inscribers.push(possible_inscriber);
-                            possible_inscriber = [0; 32];
+                let script = bitcoin::ScriptBuf::from(tx.input[i].witness.tapscript().unwrap());
+                for instruction in script.instructions() {
+                    match instruction {
+                        Ok(bitcoin::blockdata::script::Instruction::PushBytes(data)) => {
+                            if data.len() == 32 {
+                                let mut x_only_pubkey = [0u8; 32];
+                                x_only_pubkey.copy_from_slice(data.as_bytes());
+                                possible_inscriber = x_only_pubkey;
+                            }
+                        }
+                        Ok(bitcoin::blockdata::script::Instruction::Op(op)) => match op.to_u8() {
+                            x if x == OP_CHECKSIG.to_u8()
+                                || x == OP_CHECKSIGVERIFY.to_u8()
+                                || x == OP_CHECKSIGADD.to_u8() =>
+                            {
+                                if possible_inscriber != [0; 32] {
+                                    inscribers.push(possible_inscriber);
+                                    possible_inscriber = [0; 32];
+                                }
+                            }
+                            _ => {}
+                        },
+                        Err(err) => {
+                            println!("Error parsing instruction: {}", err);
                         }
                     }
                 }
