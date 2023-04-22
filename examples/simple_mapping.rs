@@ -164,6 +164,15 @@ pub fn main() {
                 .unwrap();
         if current_hash == stop_block {
             println!("Finished scanning!");
+            println!("Calculating inscription numbers...");
+
+            if use_db {
+                block_on(async {
+                    let _res = db.generate_inscription_numbers().await;
+                })
+            }
+            println!("Done!");
+
             break;
         }
 
