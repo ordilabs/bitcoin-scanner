@@ -4,7 +4,7 @@
 
 ### Install Postgres
 
-`brew install postgres`
+`brew install postgresql@14`
 
 ### Create and configure user and db
 
