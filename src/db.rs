@@ -144,4 +144,41 @@ impl DB {
             }
         }
     }
+
+    pub async fn generate_inscription_numbers(&mut self) -> Result<u64, Error> {
+        let stmt = self.client.prepare(
+            "CREATE TABLE inscription_numbers AS (
+                SELECT
+                    id as inscription_record_id,
+                    (ROW_NUMBER() OVER (ORDER BY short_input_id DESC)) * - 1 AS number
+                FROM
+                    inscription_record
+                WHERE
+            \"index\" != 0
+            
+                UNION ALL
+            
+                SELECT
+                    id as inscription_record_id,
+                    (ROW_NUMBER() OVER (ORDER BY short_input_id DESC)) AS number
+                FROM
+                    inscription_record
+                WHERE
+            \"index\" = 0
+            );",
+        );
+
+        let stmt = match stmt {
+            Ok(s) => s,
+            Err(e) => return Err(e),
+        };
+
+        match self.client.execute(&stmt, &[]) {
+            Ok(rows_affected) => Ok(rows_affected),
+            Err(err) => {
+                println!("Error: {:?}", err);
+                Err(err)
+            }
+        }
+    }
 }
