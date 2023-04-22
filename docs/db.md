@@ -23,7 +23,6 @@ GRANT
 ### Reset the db
 
 ```
-$ psql
-$-# \c ordscanner
-ordscanner=#TRUNCATE TABLE inscription_records;
+$  psql --username=$(whoami) --dbname=ordscanner
+ordscanner=# TRUNCATE TABLE inscription_record, sats_name;
 ```
