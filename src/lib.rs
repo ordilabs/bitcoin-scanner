@@ -4,7 +4,7 @@ use std::io::{self, Error, ErrorKind, Read, Result};
 
 const _MAX_SIZE: u64 = 0x02000000;
 mod scanner;
-pub use scanner::Scanner;
+pub use scanner::{BlockIndexRecord, Scanner};
 
 pub mod db;
 
