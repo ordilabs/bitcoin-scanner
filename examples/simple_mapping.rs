@@ -11,6 +11,7 @@ use ord_labs::*;
 use async_std::task::block_on;
 use bitcoin::amount::Amount;
 use bitcoin::blockdata::constants::{COIN_VALUE, SUBSIDY_HALVING_INTERVAL};
+use bitcoin::hashes::{sha256, Hash};
 use bitcoin::opcodes::all::*;
 use bitcoin::{BlockHash, Transaction};
 use bitcoin_scanner::db::{InscriptionRecord, SatsNameRecord, DB};
@@ -182,6 +183,14 @@ pub fn main() {
                         tx_i.try_into().unwrap(),
                         i.try_into().unwrap(),
                     );
+                    let hash_result;
+                    let digest = match ins.body() {
+                        Some(body) => {
+                            hash_result = sha256::Hash::hash(body);
+                            hash_result.as_byte_array()
+                        }
+                        None => &[0u8; 32],
+                    };
 
                     let insert_rec = InscriptionRecord {
                         _id: 0,
@@ -198,6 +207,7 @@ pub fn main() {
                         genesis_height: record.height,
                         short_input_id: short_input_id,
                         offset: input_offset,
+                        digest: *digest,
                     };
 
                     ins_block_count += 1;
