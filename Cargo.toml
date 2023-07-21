@@ -15,7 +15,7 @@ more-asserts = "0.3.1"
 mp4 = "0.13.0"
 ord-labs = { version = "0.1.0", git = "https://github.com/ordilabs/ord-labs.git", branch = "main" }
 postgres = "0.19.5"
-rusty-leveldb = "1.0.6"
+rusty-leveldb = "2.0.0"
 serde = "1.0.159"
 serde_derive = "1.0.159"
 serde_json = "1.0.95"
